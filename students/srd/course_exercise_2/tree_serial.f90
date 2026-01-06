@@ -11,7 +11,9 @@ real(kind=bit64), parameter :: epsilon = 0.001_bit64 ! softening parameter
 type(particle3d), allocatable :: p(:) ! Using the mass, position and velocities from the particle module
 type(vector3d) :: rji 
 type(vector3d), allocatable :: a(:)
-
+! Time control variables:
+integer(kind=8)  :: c_ini, c_fin, c_rate
+real(kind=bit64) :: t_tree, t_forces, t_update, t_total
 
 TYPE RANGE
     REAL(kind=bit64), DIMENSION(3) :: min,max
@@ -75,17 +77,27 @@ END DO
 
 CALL Calculate_forces(head,p,a)
 
+! Initialization of the time variables
+t_tree   = 0.0_bit64
+t_forces = 0.0_bit64
+t_update = 0.0_bit64
+! Obtaining the tick frequency
+call system_clock(count_rate=c_rate)
 
 !! Bucle principal
 t = 0.0_bit64
 t_out = 0.0_bit64
 DO WHILE (t <= t_end)
+
+    call system_clock(count=c_ini) ! Clock initialization
     DO i = 1,n
-    	p(i)%v = p(i)%v + a(i) * (dt/2.0_bit64)
-    	p(i)%p = p(i)%p + p(i)%v * dt
+        p(i)%v = p(i)%v + a(i) * (dt/2.0_bit64)
+        p(i)%p = p(i)%p + p(i)%v * dt
     END DO
+    call system_clock(count=c_fin) ! Clock stop
+    t_update = t_update + real(c_fin - c_ini, bit64) / real(c_rate, bit64)
 
-
+    call system_clock(count=c_ini) ! Clock initialization
     !! Las posiciones han cambiado, reinicializamos el árbol
     CALL Borrar_tree(head)
     CALL Calculate_Ranges(head,p,n)
@@ -93,35 +105,57 @@ DO WHILE (t <= t_end)
     CALL Nullify_Pointers(head)
 
     DO i = 1,n
-    	CALL Find_Cell(head, temp_cell, p(i)) ! Using particle
-    	CALL Place_Cell(temp_cell, p(i), i)
+        CALL Find_Cell(head, temp_cell, p(i)) ! Using particle
+        CALL Place_Cell(temp_cell, p(i), i)
     END DO
-
 
     CALL Borrar_empty_leaves(head)
     CALL Calculate_masses(head,p)
+    call system_clock(count=c_fin) ! Clock stop
+    t_tree = t_tree + real(c_fin - c_ini, bit64) / real(c_rate, bit64)
 
+    call system_clock(count=c_ini) ! Clock initialization
     DO i = 1,n
-    	a(i) = vector3d(0.0_bit64, 0.0_bit64, 0.0_bit64)
+        a(i) = vector3d(0.0_bit64, 0.0_bit64, 0.0_bit64)
     END DO
 
     CALL Calculate_forces(head,p,a)
+    call system_clock(count=c_fin) ! Clock stop
+    t_forces = t_forces + real(c_fin - c_ini, bit64) / real(c_rate, bit64)
 
+    call system_clock(count=c_ini) ! Clock initialization
     DO i = 1,n
-    	p(i)%v = p(i)%v + a(i) * (dt/2.0_bit64)
+        p(i)%v = p(i)%v + a(i) * (dt/2.0_bit64)
     END DO
-
 
     t_out = t_out + dt
     IF (t_out >= dt_out) THEN
-    	WRITE(out_unit, *) t, ( p(i)%p%x, p(i)%p%y, p(i)%p%z, i = 1, n )
-    	t_out = 0.0
+        WRITE(out_unit, *) t, ( p(i)%p%x, p(i)%p%y, p(i)%p%z, i = 1, n )
+        t_out = 0.0
     END IF
 
     t = t + dt
+    call system_clock(count=c_fin) ! Clock stop
+    t_update = t_update + real(c_fin - c_ini, bit64) / real(c_rate, bit64)
+
 END DO
 
 CLOSE(out_unit)
+
+t_total = t_tree + t_forces + t_update
+
+! Print time info
+PRINT*, ""
+PRINT*, "==============================================="
+PRINT*, "         PERFORMANCE REPORT (SERIAL)           "
+PRINT*, "==============================================="
+PRINT '(A, F12.4, A)', " Total Calculation Time:  ", t_total, " s"
+PRINT*, "-----------------------------------------------"
+PRINT '(A, F12.4, A, F6.2, A)', " 1. Tree Management:      ", t_tree,   " s | ", (t_tree/t_total)*100.0, "%"
+PRINT '(A, F12.4, A, F6.2, A)', " 2. Force Calculation:    ", t_forces, " s | ", (t_forces/t_total)*100.0, "%"
+PRINT '(A, F12.4, A, F6.2, A)', " 3. Integration & I/O:    ", t_update, " s | ", (t_update/t_total)*100.0, "%"
+PRINT*, "==============================================="
+
 
 CONTAINS
 
