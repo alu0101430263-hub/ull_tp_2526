@@ -26,7 +26,7 @@ INTEGER :: i,j,k
 INTEGER, PARAMETER :: out_unit = 10 ! Logic number for the output file
 real(kind=bit64) :: dt, t_end, t, dt_out, t_out, rs, r2, r3 ! Maintaining the precision type between modules
 real(kind=bit64), parameter :: theta = 1.0_bit64
-real(kind=bit64), parameter :: epsilon = 0.001_bit64 ! softening parameter 
+real(kind=bit64), parameter :: epsilon = 0.01_bit64 ! softening parameter 
 type(particle3d), allocatable :: p(:) ! Using the mass, position and velocities from the particle module
 type(vector3d) :: rji 
 type(vector3d), allocatable :: a(:)

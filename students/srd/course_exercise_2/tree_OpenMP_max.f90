@@ -1,7 +1,12 @@
 PROGRAM tree
 use geometry
 use particle
+!$ use omp_lib ! OpenMP library. Only activates with the -fopenmp when compiling
 IMPLICIT NONE
+
+! Assume serial. Only applies the OpenMP changes with the flag at compilation
+character(len=20) :: mode_name = "SERIAL" ! Relevant when printing the performance
+INTEGER :: nt = 1
 
 INTEGER :: i,j,k,n
 INTEGER, PARAMETER :: out_unit = 10 ! Logic number for the output file
@@ -29,7 +34,7 @@ TYPE CELL
     INTEGER :: pos
     INTEGER :: type        !! 0 = no particle; 1 = particle; 2 = conglomerado
     REAL(kind=bit64) :: mass
-    TYPE(vector3d) :: c_o_m          ! Changed to be a vector
+    TYPE(vector3d) :: c_o_m           ! Changed to be a vector
     TYPE(CPtr), DIMENSION(2,2,2) :: subcell
 END TYPE CELL
 
@@ -51,7 +56,7 @@ ALLOCATE(a(n))
 !Reading all the "p" properties from the module
 DO i = 1, n
     READ*, p(i)%m, p(i)%p%x, p(i)%p%y, p(i)%p%z, &
-                 p(i)%v%x, p(i)%v%y, p(i)%v%z
+                   p(i)%v%x, p(i)%v%y, p(i)%v%z
 END DO
 
 
@@ -98,6 +103,9 @@ DO WHILE (t <= t_end)
     t_update = t_update + real(c_fin - c_ini, bit64) / real(c_rate, bit64)
 
     call system_clock(count=c_ini) ! Clock initialization
+    ! We DON'T paralellize the tree construction using OpenMP
+    ! Multiple cores would try to construct the same cell at the same time -> program breaks
+
     !! Las posiciones han cambiado, reinicializamos el árbol
     CALL Borrar_tree(head)
     CALL Calculate_Ranges(head,p,n)
@@ -147,15 +155,18 @@ t_total = t_tree + t_forces + t_update
 ! Print time info
 PRINT*, ""
 PRINT*, "==============================================="
-PRINT*, "         PERFORMANCE REPORT (SERIAL)           "
-PRINT*, "==============================================="
+!$ mode_name = "OpenMP"
+!$ nt = omp_get_max_threads()
+PRINT*, "           PERFORMANCE REPORT (", trim(mode_name), ") "
+!$ PRINT*, "           THREADS USED: ", nt
+    
+    PRINT*, "==============================================="
 PRINT '(A, F12.4, A)', " Total Calculation Time:  ", t_total, " s"
 PRINT*, "-----------------------------------------------"
 PRINT '(A, F12.4, A, F6.2, A)', " 1. Tree Management:      ", t_tree,   " s | ", (t_tree/t_total)*100.0, "%"
 PRINT '(A, F12.4, A, F6.2, A)', " 2. Force Calculation:    ", t_forces, " s | ", (t_forces/t_total)*100.0, "%"
 PRINT '(A, F12.4, A, F6.2, A)', " 3. Integration & I/O:    ", t_update, " s | ", (t_update/t_total)*100.0, "%"
-PRINT*, "==============================================="
-
+PRINT*, "===============================================" 
 
 CONTAINS
 
@@ -387,10 +398,13 @@ SUBROUTINE Calculate_forces(head, p, a)
     type(particle3d), intent(in) :: p(:)
     type(vector3d), intent(inout) :: a(:)
     INTEGER :: i
-
+    
+    ! Dynamic parallelization: particle assignment meanwhile the cores are free
+    !$omp parallel do private(i) schedule(dynamic)
     DO i = 1, SIZE(p)
         CALL Calculate_forces_aux(i, head, p, a)
     END DO
+    !$omp end parallel do
 END SUBROUTINE Calculate_forces
 
 
@@ -436,4 +450,3 @@ END SUBROUTINE Calculate_forces_aux
 
 
 END PROGRAM tree
-
