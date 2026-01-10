@@ -8,11 +8,12 @@ The project structure is organized as follows:
 
 - Modules "geometry" and "particle": Define 3D vector operations and the "particle3d" derived type.
 - tree_serial.f90: The sequential version of the code.
-- tree_OpenMP.f90: Based on "Implementation 1" from TAP. It parallelizes the main force loops. This code can be compiled without the OpenMP flag to function exactly like the serial version.
+- tree_OpenMP.f90: Based on "Implementation 1" from TAP, but with OpenMP It parallelizes the main force loops. This code can be compiled without the OpenMP flag to function exactly like the serial version.
 - tree_OpenMP_max.f90: An optimized version that parallelizes only the most computationally intensive loops to maximize efficiency.
-- tree_MPI.f90: A distributed-memory version using MPI, based on "Implementation 2" from TAP, allowing for parallel tree construction.
+- tree_MPI.f90: A distributed-memory version using MPI, based on "Implementation 1" from TAP.
 
 Note on OpenMP: Tree construction is kept serial to avoid race conditions, where different cores might attempt to modify the same tree cell simultaneously.
+The MPI implementation uses a locally redundant tree strategy, where each process constructs the full Octree after a global position synchronization (MPI_ALLGATHERV). While this increases the tree management overhead as we'll discuss in the analysis, it significantly simplifies the force calculation phase by eliminating the need for inter-process communication during tree traversal.
 
 Execution commands:
 ./tree_serial < input.dat
